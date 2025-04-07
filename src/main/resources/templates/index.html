@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Spring Boot File Upload with Labels</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .message { padding: 10px; margin-bottom: 15px; border: 1px solid; }
+        .success { border-color: green; background-color: #e6ffed; color: #006400; }
+        .error { border-color: red; background-color: #ffe6e6; color: #cc0000; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        ul { list-style: none; padding: 0; }
+        li { display: inline-block; background-color: #eee; border-radius: 3px; padding: 2px 6px; margin-right: 5px; font-size: 0.9em; }
+        .upload-form { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; background-color: #f9f9f9; }
+        .upload-form div { margin-bottom: 10px; }
+        .upload-form label { display: block; margin-bottom: 5px; }
+        .upload-form input[type="text"], .upload-form input[type="file"] { width: calc(100% - 22px); padding: 8px; border: 1px solid #ccc; }
+        .upload-form button { padding: 10px 15px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        .upload-form button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <h1>Upload File with Labels</h1>
+
+    <!-- Display messages (success/error) -->
+    <div th:if="${message}" th:text="${message}"
+         th:class="${#strings.contains(message, 'successfully') ? 'message success' : 'message error'}">
+    </div>
+
+    <!-- Upload Form -->
+    <div class="upload-form">
+        <form method="POST" action="/upload" enctype="multipart/form-data">
+            <div>
+                <label for="file">File:</label>
+                <input type="file" name="file" id="file" required />
+            </div>
+            <div>
+                <label for="labels">Labels (comma-separated):</label>
+                <input type="text" name="labels" id="labels" placeholder="e.g., document, important, draft" />
+            </div>
+            <div>
+                <button type="submit">Upload</button>
+            </div>
+        </form>
+    </div>
+
+    <h2>Uploaded Files</h2>
+    <div th:if="${files == null or files.isEmpty()}">
+        No files uploaded yet.
+    </div>
+
+    <!-- Table of Uploaded Files -->
+    <table th:unless="${files == null or files.isEmpty()}">
+        <thead>
+            <tr>
+                <th>Original Filename</th>
+                <th>Labels</th>
+                <th>File Format</th> <!-- Changed Header -->
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="file : ${files}">
+                <!-- Display filename without extension -->
+                <td th:text="${file.filename}"></td>
+                <td>
+                    <ul th:if="${not #lists.isEmpty(file.labels)}">
+                        <li th:each="label : ${file.labels}" th:text="${label}"></li>
+                    </ul>
+                    <span th:if="${#lists.isEmpty(file.labels)}">No labels</span>
+                </td>
+                <!-- Display only file extension -->
+                <td th:text="${file.contentType}"></td>
+                <td>
+                    <!-- Link to download the file using the stored path -->
+                    <a th:href="@{'/files/' + ${file.storagePath}}">Download</a>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+</body>
+</html>
