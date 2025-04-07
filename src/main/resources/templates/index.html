@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org" xmlns:java-time="http://www.thymeleaf.org/extras/java8time"> <!-- Add java8time dialect -->
 <head>
     <meta charset="UTF-8">
     <title>Spring Boot File Upload with Labels</title>
@@ -9,21 +9,42 @@
         .success { border-color: green; background-color: #e6ffed; color: #006400; }
         .error { border-color: red; background-color: #ffe6e6; color: #cc0000; }
         table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; } /* Added vertical-align: top */
+        td { min-height: 30px; } /* Added minimum height for table cells */
         th { background-color: #f2f2f2; }
-        ul { list-style: none; padding: 0; }
-        li { display: inline-block; background-color: #eee; border-radius: 3px; padding: 2px 6px; margin-right: 5px; font-size: 0.9em; }
+        ul { list-style: none; padding: 0; margin: 0; } /* Added margin: 0 to ul */
+        li { display: inline-block; background-color: #eee; border-radius: 3px; padding: 2px 6px; margin-right: 5px; margin-bottom: 3px; font-size: 0.9em; } /* Added margin-bottom */
         .upload-form { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; background-color: #f9f9f9; }
         .upload-form div { margin-bottom: 10px; }
         .upload-form label { display: block; margin-bottom: 5px; }
         .upload-form input[type="text"], .upload-form input[type="file"] { width: calc(100% - 22px); padding: 8px; border: 1px solid #ccc; }
         .upload-form button { padding: 10px 15px; background-color: #007bff; color: white; border: none; cursor: pointer; }
         .upload-form button:hover { background-color: #0056b3; }
+        .action-link { /* Style for download link */
+            display: inline-block;
+            padding: 3px 8px;
+            background-color: #007bff; /* Blue background */
+            color: white;
+            text-decoration: none; /* Remove underline */
+            font-size: 0.9em;
+            border-radius: 3px;
+            border: none;
+            cursor: pointer;
+            vertical-align: middle; /* Align with button */
+        }
+        .action-link:hover { background-color: #0056b3; color: white; }
+        .action-form { display: inline; margin-left: 10px; vertical-align: middle; } /* Style for the delete form */
+        .action-form button { padding: 3px 8px; background-color: #dc3545; color: white; border: none; cursor: pointer; font-size: 0.9em; border-radius: 3px; } /* Style for delete button */
+        .action-form button:hover { background-color: #c82333; }
+        /* Style for datalist inputs */
+        .combo-input { width: calc(100% - 22px); padding: 8px; border: 1px solid #ccc; }
     </style>
 </head>
 <body>
+    <!-- Hidden div to store JSON data from Thymeleaf -->
+    <div id="subCategoriesData" th:data-subcategories="${subCategoriesByCategoryJson}" style="display: none;"></div>
 
-    <h1>Upload File with Labels</h1>
+    <h1>Upload File with Labels and Categories</h1>
 
     <!-- Display messages (success/error) -->
     <div th:if="${message}" th:text="${message}"
@@ -39,7 +60,34 @@
             </div>
             <div>
                 <label for="labels">Labels (comma-separated):</label>
-                <input type="text" name="labels" id="labels" placeholder="e.g., document, important, draft" />
+                <input type="text" name="labels" id="labels" placeholder="e.g., document, important, draft" class="combo-input"/>
+            </div>
+             <div>
+                <label for="categorySelect">Category:</label>
+                <!-- Use select dropdown as suggested -->
+                <select id="categorySelect" class="combo-input" required> <!-- Removed name attribute initially -->
+                    <option value="">-- Select Category --</option>
+                    <option th:each="cat : ${categories}" th:value="${cat.name}" th:data-id="${cat.id}" th:text="${cat.name}"></option>
+                    <option value="new">+ Add New Category</option>
+                </select>
+
+                <!-- Hidden div that appears when "Add New Category" is selected -->
+                <div id="newCategoryDiv" style="display: none; margin-top: 10px;">
+                    <input type="text" id="newCategoryInput" placeholder="Enter new category name" class="combo-input">
+                </div>
+
+                <!-- Hidden input to send the final category value (name="category" matches controller) -->
+                <input type="hidden" name="category" id="categoryFinalHidden" />
+            </div>
+            <div>
+                <label for="subCategoryInput">Sub-Category:</label>
+                <!-- Keep sub-category as input+datalist for now -->
+                <input type="text" list="subCategoryList" id="subCategoryInput" placeholder="Select or type new sub-category (optional)" class="combo-input" disabled> <!-- Re-added type="text" for consistency -->
+                <datalist id="subCategoryList">
+                    <!-- Options will be populated by JavaScript -->
+                </datalist>
+                 <!-- Hidden input to send the actual sub-category name -->
+                <input type="hidden" name="subCategory" id="subCategoryNameHidden" />
             </div>
             <div>
                 <button type="submit">Upload</button>
@@ -56,31 +104,141 @@
     <table th:unless="${files == null or files.isEmpty()}">
         <thead>
             <tr>
-                <th>Original Filename</th>
+                <th>Filename</th>
+                <th>Category</th> <!-- Added Category Header -->
+                <th>Sub-Category</th> <!-- Added Sub-Category Header -->
                 <th>Labels</th>
-                <th>File Format</th> <!-- Changed Header -->
-                <th>Action</th>
+                <th>File Extension</th>
+                <th>Upload Time</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             <tr th:each="file : ${files}">
-                <!-- Display filename without extension -->
                 <td th:text="${file.filename}"></td>
+                <td th:text="${file.category != null ? file.category.name : 'N/A'}"></td> <!-- Display Category -->
+                <td th:text="${file.subCategory != null ? file.subCategory.name : 'N/A'}"></td> <!-- Display Sub-Category -->
                 <td>
                     <ul th:if="${not #lists.isEmpty(file.labels)}">
                         <li th:each="label : ${file.labels}" th:text="${label}"></li>
                     </ul>
                     <span th:if="${#lists.isEmpty(file.labels)}">No labels</span>
                 </td>
-                <!-- Display only file extension -->
-                <td th:text="${file.contentType}"></td>
+                <!-- Display file extension from model attribute -->
+                <td th:text="${fileExtensions[file.id]} ?: 'N/A'"></td> <!-- Use fileExtensions map -->
+                <!-- Display formatted upload time -->
+                <td th:text="${file.uploadTime != null ? #temporals.format(file.uploadTime, 'yyyy-MM-dd HH:mm:ss') : 'N/A'}"></td>
                 <td>
                     <!-- Link to download the file using the stored path -->
-                    <a th:href="@{'/files/' + ${file.storagePath}}">Download</a>
+                    <a th:href="@{'/files/' + ${file.storagePath}}" class="action-link">Download</a>
+                    <!-- Form to delete the file -->
+                    <form th:action="@{'/files/delete/' + ${file.storagePath}}" method="post" class="action-form" onsubmit="return confirm('Are you sure you want to delete this file?');">
+                        <button type="submit">Delete</button>
+                    </form>
                 </td>
             </tr>
         </tbody>
     </table>
+
+    <script>
+        // Parse the subcategory data passed from the controller
+        const subCategoriesDataElement = document.getElementById('subCategoriesData');
+        const subCategoriesByCategory = JSON.parse(subCategoriesDataElement.getAttribute('data-subcategories') || '{}');
+
+        // --- Updated JS Variables ---
+        const categorySelect = document.getElementById('categorySelect'); // Changed to select
+        const newCategoryDiv = document.getElementById('newCategoryDiv');
+        const newCategoryInput = document.getElementById('newCategoryInput');
+        const categoryFinalHidden = document.getElementById('categoryFinalHidden'); // Use the final hidden input
+
+        const subCategoryInput = document.getElementById('subCategoryInput');
+        const subCategoryList = document.getElementById('subCategoryList');
+        const subCategoryNameHidden = document.getElementById('subCategoryNameHidden');
+
+        // --- Event Listener for Category Select (Handles showing new input and subcategory updates) ---
+        categorySelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const selectedCategoryName = this.value;
+            const selectedCategoryId = selectedOption ? selectedOption.getAttribute('data-id') : null; // Handle null option
+
+            // Show/hide new category input
+            if (selectedCategoryName === 'new') {
+                newCategoryDiv.style.display = 'block';
+                newCategoryInput.value = ''; // Clear previous entry
+                newCategoryInput.focus();
+                categoryFinalHidden.value = ''; // Clear hidden value, will be set by input listener
+            } else {
+                newCategoryDiv.style.display = 'none';
+                newCategoryInput.value = ''; // Clear just in case
+                categoryFinalHidden.value = selectedCategoryName; // Set hidden value from select
+            }
+
+            // --- Subcategory Logic (triggered by category change) ---
+            subCategoryInput.value = ''; // Clear subcategory input
+            subCategoryNameHidden.value = ''; // Clear hidden subcategory value
+            subCategoryList.innerHTML = ''; // Clear subcategory options
+            subCategoryInput.disabled = true; // Disable subcategory initially
+
+            // Enable subcategory ONLY if a valid existing category is selected
+            if (selectedCategoryId && subCategoriesByCategory[selectedCategoryId]) {
+                const subCategories = subCategoriesByCategory[selectedCategoryId];
+                subCategories.forEach(sub => {
+                    const option = document.createElement('option');
+                    option.value = sub.name;
+                    subCategoryList.appendChild(option);
+                });
+                subCategoryInput.disabled = false; // Enable subcategory input
+                subCategoryInput.focus(); // Set focus to the input field
+            }
+            // If "Add New Category" or "-- Select Category --" is chosen, subcategory remains disabled.
+        });
+
+        // --- Event Listener for New Category Input ---
+        newCategoryInput.addEventListener('input', function() {
+            // Update the final hidden value as the user types the new category name
+            categoryFinalHidden.value = this.value.trim();
+            // When typing a new category, subcategory should be enabled (can also type new subcat)
+            subCategoryInput.disabled = false;
+            subCategoryInput.value = ''; // Clear any previous subcat selection
+            subCategoryNameHidden.value = '';
+            subCategoryList.innerHTML = ''; // Clear subcat options as they don't apply to a new category yet
+        });
+
+
+        // --- Event Listener for SubCategory Input ---
+        subCategoryInput.addEventListener('input', function() {
+            // Update the hidden subcategory name field whenever the user types or selects
+             subCategoryNameHidden.value = this.value;
+        });
+
+        // --- Form Submission Logic ---
+        const uploadForm = document.querySelector('.upload-form form');
+        uploadForm.addEventListener('submit', function(e) {
+            // Final check: if "Add New" was selected, ensure the text input has a value
+            if (categorySelect.value === 'new') {
+                if (!newCategoryInput.value.trim()) {
+                    alert('Please enter a name for the new category.');
+                    e.preventDefault(); // Stop form submission
+                    return false;
+                }
+                // Ensure the hidden field has the value from the text input
+                categoryFinalHidden.value = newCategoryInput.value.trim();
+            } else if (!categorySelect.value) {
+                 alert('Please select a category.');
+                 e.preventDefault(); // Stop form submission
+                 return false;
+            } else {
+                 // Ensure the hidden field has the value from the select dropdown
+                 categoryFinalHidden.value = categorySelect.value;
+            }
+
+            // Ensure subcategory hidden field is set (it should be by its input listener)
+            if (!subCategoryNameHidden.value) {
+                 subCategoryNameHidden.value = subCategoryInput.value;
+            }
+        });
+
+    </script>
 
 </body>
 </html>
