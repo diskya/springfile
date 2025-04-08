@@ -71,3 +71,15 @@ Caused by: org.h2.mvstore.MVStoreException: The file is locked: /home/disky/Repo
 	at org.h2.mvstore.SingleFileStore.open(SingleFileStore.java:81)
 	at org.h2.mvstore.MVStore.<init>(MVStore.java:286)
 	... 54 more
+2025-04-08 13:29:48.072480+08:00 jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "SELECT * FROM FILE_INFO_LABELS FILE_INFO_ID [*]LABELS"; SQL statement:
+SELECT * FROM FILE_INFO_LABELS FILE_INFO_ID LABELS [42000-232]
+2025-04-08 13:29:49.447278+08:00 jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "SELECT * FROM FILE_INFO_LABELS FILE_INFO_ID [*]LABELS"; SQL statement:
+SELECT * FROM FILE_INFO_LABELS FILE_INFO_ID LABELS [42000-232]
+2025-04-08 13:29:57.223015+08:00 jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "[*]LABELS"; SQL statement:
+LABELS [42000-232]
+2025-04-08 13:47:16.246428+08:00 jdbc[15]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "SELECT * FROM FILE_INFO CATEGORY [*]CATEGORY"; SQL statement:
+SELECT * FROM FILE_INFO CATEGORY CATEGORY [42000-232]

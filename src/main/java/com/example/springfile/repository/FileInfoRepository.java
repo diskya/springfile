@@ -26,4 +26,7 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Long> {
            "LEFT JOIN FETCH fi.labels " + // Also fetch labels if needed, though not strictly required for the message fix
            "WHERE fi.storagePath = :storagePath")
     Optional<FileInfo> findByStoragePath(String storagePath);
+
+    // Method to find all FileInfo entities associated with a specific SubCategory
+    List<FileInfo> findBySubCategory(com.example.springfile.model.SubCategory subCategory);
 }

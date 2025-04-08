@@ -9,5 +9,4 @@ public class SpringfileApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(SpringfileApplication.class, args);
 	}
-
 }
