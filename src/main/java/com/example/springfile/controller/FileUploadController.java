@@ -39,9 +39,13 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import org.slf4j.Logger; // Added import for Logger
 import org.slf4j.LoggerFactory; // Added import for LoggerFactory
+import com.example.springfile.dto.CategoryDto; // Added import for external DTO
+import com.example.springfile.dto.SubCategoryDto; // Added import for external DTO
 
 @Controller
 public class FileUploadController {
+
+    // Inner DTO classes removed, using external ones now.
 
     private static final Logger log = LoggerFactory.getLogger(FileUploadController.class); // Added logger
 
@@ -87,15 +91,7 @@ public class FileUploadController {
         }
         // ------------------------------------------------
 
-        // Group subcategories by category ID for easier access in JavaScript
-        // We only need ID and name for the frontend selection
-        Map<Long, List<Map<String, Object>>> subCategoriesByCategory = subCategories.stream()
-                .filter(sc -> sc.getCategory() != null && sc.getCategory().getId() != null) // Ensure category and its ID are not null
-                .collect(Collectors.groupingBy(
-                        sc -> sc.getCategory().getId(),
-                        Collectors.mapping(sc -> Map.<String, Object>of("id", sc.getId(), "name", sc.getName()), Collectors.toList())
-                ));
-
+        // Subcategory grouping will be handled in JavaScript
 
         Map<Long, String> fileExtensions = new HashMap<>();
 
@@ -116,31 +112,52 @@ public class FileUploadController {
 
         model.addAttribute("files", fileInfos);
         model.addAttribute("fileExtensions", fileExtensions);
-        model.addAttribute("categories", categories); // Add categories to the model
-        String subCategoriesJson = convertMapToJson(subCategoriesByCategory); // Convert map to JSON
-        log.info("Passing subCategoriesByCategoryJson to template: {}", subCategoriesJson); // Log the JSON string
-        model.addAttribute("subCategoriesByCategoryJson", subCategoriesJson); // Add subcategories map as JSON
+        // model.addAttribute("categories", categories); // Remove this line - use JSON DTOs instead
+
+        // Map entities to DTOs before serialization
+        List<CategoryDto> categoryDtos = categories.stream()
+                .map(cat -> new CategoryDto(cat.getId(), cat.getName()))
+                .collect(Collectors.toList());
+
+        List<SubCategoryDto> subCategoryDtos = subCategories.stream()
+                // Ensure category and its ID are not null before creating DTO
+                .filter(sc -> sc.getCategory() != null && sc.getCategory().getId() != null)
+                .map(sc -> new SubCategoryDto(sc.getId(), sc.getName(), sc.getCategory().getId()))
+                .collect(Collectors.toList());
+
+        // Pass DTO lists as JSON strings for client-side handling
+        String categoriesJson = convertListToJson(categoryDtos, "categories");
+        String subCategoriesJson = convertListToJson(subCategoryDtos, "subCategories");
+        model.addAttribute("categoriesJson", categoriesJson);
+        model.addAttribute("subCategoriesJson", subCategoriesJson);
+        log.info("Passing categoriesJson (DTOs) to template: {}", categoriesJson);
+        log.info("Passing subCategoriesJson (DTOs) to template: {}", subCategoriesJson);
+
 
         return "index";
     }
 
-    // Helper method to convert Map to JSON String using Jackson
-    private String convertMapToJson(Map<Long, List<Map<String, Object>>> map) {
+    // Generic helper method to convert List to JSON String using Jackson
+    private String convertListToJson(List<?> list, String listName) {
         try {
-            return objectMapper.writeValueAsString(map);
+            // Important: Need to handle potential circular references (e.g., SubCategory -> Category -> SubCategories)
+            // This might require @JsonIgnore or custom serializers on the model classes.
+            // Let's assume for now Jackson handles it or we'll address it if an error occurs.
+            return objectMapper.writeValueAsString(list);
         } catch (JsonProcessingException e) {
-            log.error("Error converting subcategories map to JSON", e);
-            return "{}"; // Return empty JSON object on error
+            log.error("Error converting {} list to JSON", listName, e);
+            return "[]"; // Return empty JSON array on error
         }
     }
 
-    // Removed manual JSON escaping helper as Jackson handles it
 
     @PostMapping("/upload")
     public String handleFileUpload(@RequestParam("file") MultipartFile file,
                                    @RequestParam("labels") String labelsString,
-                                   @RequestParam("category") String categoryName, // Add category param
-                                   @RequestParam("subCategory") String subCategoryName, // Add subCategory param
+                                   @RequestParam("category") String categoryValue, // Renamed from categoryName to reflect it can be ID or "new"
+                                   @RequestParam(name = "newCategory", required = false) String newCategoryName, // Capture new category name
+                                   @RequestParam("subCategory") String subCategoryValue, // Renamed from subCategoryName
+                                   @RequestParam(name = "newSubCategory", required = false) String newSubCategoryName, // Capture new sub-category name
                                    RedirectAttributes redirectAttributes) {
 
         String originalFilename = StringUtils.cleanPath(file.getOriginalFilename());
@@ -176,14 +193,47 @@ public class FileUploadController {
                     storedFilename,
                     contentType,
                     labels,
-                    categoryName,
-                    subCategoryName
+                    categoryValue,      // Pass the value (ID or "new")
+                    newCategoryName,    // Pass the potential new name
+                    subCategoryValue,   // Pass the value (ID or "new")
+                    newSubCategoryName  // Pass the potential new name
             );
 
-            redirectAttributes.addFlashAttribute("message",
-                    "You successfully uploaded '" + originalFilename + "' with Category: " + categoryName + ", SubCategory: " + subCategoryName + ", Labels: " + labels);
+            // Fetch the saved FileInfo to get actual category/subcategory names (This part remains correct)
+            Optional<FileInfo> savedFileInfoOpt = fileInfoRepository.findByStoragePath(storedFilename);
+            String finalCategoryName = "N/A";
+            String finalSubCategoryName = "N/A";
+
+            if (savedFileInfoOpt.isPresent()) {
+                FileInfo savedFileInfo = savedFileInfoOpt.get();
+                if (savedFileInfo.getCategory() != null) {
+                    finalCategoryName = savedFileInfo.getCategory().getName();
+                }
+                if (savedFileInfo.getSubCategory() != null) {
+                    finalSubCategoryName = savedFileInfo.getSubCategory().getName();
+                }
+            } else {
+                log.warn("Could not find saved FileInfo immediately after saving for storedFilename: {}", storedFilename);
+                // Fallback logic (less likely needed now, but keep for safety)
+                // If fetch fails, we don't have the final names easily available here anymore.
+                // The message might be less informative in this rare failure case.
+                log.warn("Could not retrieve saved FileInfo, success message might be incomplete.");
+                finalCategoryName = "[Category Info Unavailable]";
+                finalSubCategoryName = "[SubCategory Info Unavailable]";
+            }
+            // Construct the success message using the retrieved names
+            String successMessage = String.format(
+                "You successfully uploaded '%s' with Category: %s, SubCategory: %s, Labels: %s",
+                originalFilename,
+                finalCategoryName,
+                finalSubCategoryName,
+                labels.isEmpty() ? "None" : String.join(", ", labels) // Improved label display
+            );
+            redirectAttributes.addFlashAttribute("message", successMessage);
+
 
         } catch (Exception e) {
+             log.error("Error during file upload for {}", originalFilename, e); // Log the exception
             redirectAttributes.addFlashAttribute("message",
                     "Could not upload file: " + file.getOriginalFilename() + ". Error: " + e.getMessage());
         }

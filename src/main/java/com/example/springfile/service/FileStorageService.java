@@ -95,26 +95,72 @@ public class FileStorageService {
      *
      * @param originalFilename The original name of the uploaded file.
      * @param storagePath      The unique path/filename where the file is stored (returned by storeFile).
-     * @param contentType      The MIME type of the file.
-     * @param labels           The list of labels associated with the file.
-     * @param categoryName     The name of the category.
-     * @param subCategoryName  The name of the subcategory (can be null or empty if not applicable).
+     * @param contentType        The MIME type of the file.
+     * @param labels             The list of labels associated with the file.
+     * @param categoryValue      The value from the category dropdown (ID or "new").
+     * @param newCategoryName    The name entered if categoryValue is "new".
+     * @param subCategoryValue   The value from the subcategory dropdown (ID, "new", or empty).
+     * @param newSubCategoryName The name entered if subCategoryValue is "new".
      * @return The saved FileInfo entity.
      */
-    public FileInfo saveFileMetadata(String originalFilename, String storagePath, String contentType, List<String> labels, String categoryName, String subCategoryName) {
-        // 1. Find or create Category
-        Category category = categoryRepository.findByName(categoryName)
-                .orElseGet(() -> categoryRepository.save(new Category(categoryName)));
+    public FileInfo saveFileMetadata(String originalFilename, String storagePath, String contentType, List<String> labels,
+                                     String categoryValue, String newCategoryName,
+                                     String subCategoryValue, String newSubCategoryName) {
 
-        // 2. Find or create SubCategory within the Category
+        Category category = null;
         SubCategory subCategory = null;
-        if (StringUtils.hasText(subCategoryName)) {
-            subCategory = subCategoryRepository.findByNameAndCategory(subCategoryName, category)
-                    .orElseGet(() -> subCategoryRepository.save(new SubCategory(subCategoryName, category)));
+
+        // 1. Determine Category
+        if ("new".equals(categoryValue)) {
+            if (StringUtils.hasText(newCategoryName)) {
+                // Find existing or create new if "new" is selected and name is provided
+                category = categoryRepository.findByName(newCategoryName)
+                        .orElseGet(() -> categoryRepository.save(new Category(newCategoryName.trim())));
+            } else {
+                // Handle error: "new" selected but no name provided (should ideally be caught by frontend validation)
+                throw new IllegalArgumentException("New category name cannot be empty when 'Add New' is selected.");
+            }
+        } else if (StringUtils.hasText(categoryValue)) {
+            // Find existing category by ID if a value other than "new" is provided
+            try {
+                Long categoryId = Long.parseLong(categoryValue);
+                category = categoryRepository.findById(categoryId)
+                        .orElseThrow(() -> new IllegalArgumentException("Invalid Category ID: " + categoryId));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid Category value: " + categoryValue);
+            }
         } else {
-            // Handle cases where subcategory might be optional or not provided
-             System.out.println("SubCategory name not provided or empty for category: " + categoryName);
-             // subCategory remains null
+             // Handle error: No category selected (should be caught by frontend validation)
+             throw new IllegalArgumentException("Category must be selected.");
+         }
+
+        // Make category effectively final for use in lambdas below
+        final Category finalCategory = category;
+
+        // 2. Determine SubCategory (only if a valid Category was determined)
+        if (finalCategory != null) {
+            if ("new".equals(subCategoryValue)) {
+                if (StringUtils.hasText(newSubCategoryName)) {
+                    // Find existing or create new subcategory within the determined category
+                    subCategory = subCategoryRepository.findByNameAndCategory(newSubCategoryName.trim(), finalCategory)
+                            .orElseGet(() -> subCategoryRepository.save(new SubCategory(newSubCategoryName.trim(), finalCategory)));
+                } else {
+                    // Handle error: "new" selected but no name provided
+                     throw new IllegalArgumentException("New sub-category name cannot be empty when 'Add New' is selected.");
+                }
+            } else if (StringUtils.hasText(subCategoryValue)) {
+                // Find existing subcategory by ID if a value other than "new" or empty is provided
+                 try {
+                    Long subCategoryId = Long.parseLong(subCategoryValue);
+                    // Important: Ensure the found subcategory belongs to the selected category (optional check)
+                    subCategory = subCategoryRepository.findById(subCategoryId)
+                            .filter(sc -> sc.getCategory().getId().equals(finalCategory.getId())) // Use finalCategory here
+                            .orElseThrow(() -> new IllegalArgumentException("Invalid SubCategory ID: " + subCategoryId + " for Category: " + finalCategory.getName())); // Use finalCategory here
+                 } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid SubCategory value: " + subCategoryValue);
+                 }
+            }
+            // If subCategoryValue is empty or null, subCategory remains null (optional subcategory)
         }
 
         // 3. Create and save FileInfo
@@ -124,10 +170,9 @@ public class FileStorageService {
                 contentType,
                 labels,
                 LocalDateTime.now(),
-                category,
+                finalCategory, // Use the effectively final variable
                 subCategory // Can be null
         );
-
         return fileInfoRepository.save(fileInfo);
     }
 

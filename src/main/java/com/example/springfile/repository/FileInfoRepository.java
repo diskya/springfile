@@ -19,6 +19,11 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Long> {
     @Override
     List<FileInfo> findAll();
 
-    // Method to find FileInfo by its unique storage path
+    // Method to find FileInfo by its unique storage path, eagerly fetching related entities
+    @Query("SELECT fi FROM FileInfo fi " +
+           "LEFT JOIN FETCH fi.category " +
+           "LEFT JOIN FETCH fi.subCategory " +
+           "LEFT JOIN FETCH fi.labels " + // Also fetch labels if needed, though not strictly required for the message fix
+           "WHERE fi.storagePath = :storagePath")
     Optional<FileInfo> findByStoragePath(String storagePath);
 }
